@@ -34,12 +34,16 @@ jar {
 }
 
 dependencies {
-	api(libraries.auto_service_annotations)
 	annotationProcessor(libraries.auto_service)
-	implementation(libraries.opentelemetry_api)
-	implementation(libraries.opentelemetry_otlp_exporter)
-	implementation(libraries.opentelemetry_sdk_autoconf)
-	implementation(libraries.opentelemetry_autoconfigure_spi)
+	// We use `compileOnly` dependency because during runtime all necessary classes are provided by javaagent itself.
+	compileOnly(libraries.auto_service_annotations)
+	compileOnly(libraries.opentelemetry_api)
+	compileOnly(libraries.opentelemetry_otlp_exporter)
+	compileOnly(libraries.opentelemetry_sdk_autoconf)
+	compileOnly(libraries.opentelemetry_autoconfigure_spi)
+
+	//  Only dependencies added to `implementation` configuration will be picked up by Shadow plugin
+	//  and added to the resulting jar for our extension's distribution.
 	implementation(libraries.google_auth)
 }
 
