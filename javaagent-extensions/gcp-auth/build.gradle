@@ -14,6 +14,7 @@
  * limitations under the License.
  */
 plugins {
+	id 'java'
 	id 'java-library'
 	id 'com.github.johnrengelman.shadow'
 }
@@ -25,12 +26,18 @@ tasks {
 }
 
 shadowJar {
-	archiveClassifier.set("")
+	archiveFileName.set("gcp-auth-extension.jar")
 }
 
 jar {
 	// Disable standard jar
 	enabled = false
+}
+
+// For auto-instrumentation agent, used for running integration test
+configurations {
+	agent
+	includedDependencies
 }
 
 dependencies {
@@ -45,8 +52,48 @@ dependencies {
 	//  Only dependencies added to `implementation` configuration will be picked up by Shadow plugin
 	//  and added to the resulting jar for our extension's distribution.
 	implementation(libraries.google_auth)
+
+	// test dependencies
+	// OTel instrumentation used in the sample app
+	testImplementation platform(libraries.opentelemetry_instrumetation_bom)
+	testImplementation('io.opentelemetry.instrumentation:opentelemetry-instrumentation-annotations')
+	// logging libs - need to be included in the test app
+	includedDependencies libraries.slf4j
+	includedDependencies testLibraries.slf4j_simple
+	// testing library and tools
+	testImplementation("org.testcontainers:testcontainers:1.20.4")
+	testImplementation(testLibraries.junit5)
+	testRuntimeOnly(testLibraries.junit5_runtime)
+
+	agent agentLibraries.agent
+}
+
+// task to copy and rename the Java Auto-Instrumentation Agent into 'libs' folder
+tasks.register('CopyAgent', Copy) {
+	into layout.buildDirectory.dir("libs")
+	from configurations.agent {
+		rename "opentelemetry-javaagent(.*).jar", "otel-agent.jar"
+	}
+}
+
+tasks.register('BuildTestApp', org.gradle.jvm.tasks.Jar) {
+	dependsOn 'CopyAgent'
+	dependsOn 'shadowJar'
+	archiveFileName.set("auto-instrumented-test-server.jar")
+	from(sourceSets.test.output)
+	// include dependencies in the JAR which are required during runtime
+	from {
+		configurations.includedDependencies.collect {
+			it.isDirectory() ? it : zipTree(it)
+		}
+	}
+	manifest {
+		attributes.put('Main-Class', 'com.google.cloud.opentelemetry.extension.auth.testapp.InstrumentedServer')
+	}
+	duplicatesStrategy = DuplicatesStrategy.EXCLUDE
 }
 
 test {
+	dependsOn 'BuildTestApp'
 	useJUnitPlatform()
 }
