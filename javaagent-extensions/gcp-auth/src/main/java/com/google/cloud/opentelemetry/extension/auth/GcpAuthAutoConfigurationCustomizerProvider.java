@@ -50,8 +50,6 @@ import java.util.Map;
 public class GcpAuthAutoConfigurationCustomizerProvider
     implements AutoConfigurationCustomizerProvider {
 
-  private static final String GCP_OTLP_ENDPOINT_STUB =
-      "https://staging-%s-telemetry.sandbox.googleapis.com:443";
   private static final String QUOTA_USER_PROJECT_HEADER = "X-Goog-User-Project";
   private static final String GCP_USER_PROJECT_ID_KEY = "gcp.project_id";
 
@@ -121,11 +119,6 @@ public class GcpAuthAutoConfigurationCustomizerProvider
   // Sets the required properties that are essential for exporting OTLP data to GCP.
   private Map<String, String> getRequiredProperties() {
     Map<String, String> properties = new HashMap<>();
-    properties.put(
-        "otel.exporter.otlp.endpoint",
-        String.format(
-            GCP_OTLP_ENDPOINT_STUB, ConfigurableOption.GOOGLE_CLOUD_REGION.getConfiguredValue()));
-    properties.put("otel.exporter.otlp.insecure", "false");
     properties.put("otel.resource.providers.gcp.enabled", "true");
     return properties;
   }

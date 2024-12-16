@@ -33,10 +33,8 @@ Here is a list of configurable options for the extension:
 
  - `GOOGLE_CLOUD_PROJECT`: Environment variable that represents the Google Cloud Project ID to which the telemetry needs to be exported.
    - Can also be configured using `google.cloud.project` system property.
- - `GOOGLE_CLOUD_REGION`: Environment variable that represents your preferred Google Cloud Region to which the telemetry needs to be exported.
-   - Can also be configured using `google.cloud.region` system property.
 
-It is **mandatory** to configure all options for the extension, not doing so would lead to a `ConfigurationException`.
+It is **mandatory** to configure this option for the extension, not doing so would lead to a `ConfigurationException`.
 
 ## Usage
 
@@ -52,6 +50,7 @@ def otelAgentPath = <OpenTelemetry Java Agent location>
 def extensionPath = <Google Cloud Authentication Extension location>
 def googleCloudProjectId = <Your Google Cloud Project ID>
 def googleCloudRegion = <Your preferred Google Cloud Region>
+def googleOtlpEndpoint = <Google Cloud OTLP endpoint>
 
 application {
    ...  
@@ -62,8 +61,9 @@ application {
   "-Dgoogle.cloud.project=${googleCloudProjectId}",
   "-Dgoogle.cloud.region=${googleCloudRegion}",  
   // Configure auto instrumentation.
+  "-Dotel.exporter.otlp.traces.endpoint=${googleOtlpEndpoint}",
   '-Dotel.java.global-autoconfigure.enabled=true',
   '-Dotel.traces.exporter=otlp',
-  '-Dotel.metrics.exporter=otlp',
+  '-Dotel.metrics.exporter=logging',
 }
 ```

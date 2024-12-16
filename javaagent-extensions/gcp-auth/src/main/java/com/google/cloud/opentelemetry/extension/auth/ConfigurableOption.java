@@ -27,13 +27,7 @@ public enum ConfigurableOption {
    * Represents the Google Cloud Project ID option. Can be configured using the environment variable
    * `GOOGLE_CLOUD_PROJECT` or the system property `google.cloud.project`.
    */
-  GOOGLE_CLOUD_PROJECT("Google Cloud Project ID"),
-
-  /**
-   * Represents the Google Cloud Region option. Can be configured using the environment variable
-   * `GOOGLE_CLOUD_REGION` or the system property `google.cloud.region`.
-   */
-  GOOGLE_CLOUD_REGION("Google Cloud Region");
+  GOOGLE_CLOUD_PROJECT("Google Cloud Project ID");
 
   private static final String OPTION_NOT_CONFIGURED_MSG =
       "GCP Authentication Extension not configured properly: %s not configured. Configure it by exporting environment variable %s or system property %s";
