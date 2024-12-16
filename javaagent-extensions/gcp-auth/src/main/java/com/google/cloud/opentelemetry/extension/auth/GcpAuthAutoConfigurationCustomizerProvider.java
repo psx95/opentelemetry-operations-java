@@ -93,34 +93,29 @@ public class GcpAuthAutoConfigurationCustomizerProvider
   private SpanExporter addAuthorizationHeaders(
       SpanExporter exporter, GoogleCredentials credentials) {
     if (exporter instanceof OtlpHttpSpanExporter) {
-      try {
-        credentials.refreshIfExpired();
-        OtlpHttpSpanExporterBuilder builder =
-            ((OtlpHttpSpanExporter) exporter)
-                .toBuilder()
-                    .addHeader(QUOTA_USER_PROJECT_HEADER, credentials.getQuotaProjectId())
-                    .addHeader(
-                        "Authorization", "Bearer " + credentials.getAccessToken().getTokenValue());
-
-        return builder.build();
-      } catch (IOException e) {
-        throw new GoogleAuthException(Reason.FAILED_ADC_REFRESH, e);
-      }
+      OtlpHttpSpanExporterBuilder builder =
+          ((OtlpHttpSpanExporter) exporter)
+              .toBuilder().setHeaders(() -> getRequiredHeaderMap(credentials));
+      return builder.build();
     } else if (exporter instanceof OtlpGrpcSpanExporter) {
-      try {
-        credentials.refreshIfExpired();
-        OtlpGrpcSpanExporterBuilder builder =
-            ((OtlpGrpcSpanExporter) exporter)
-                .toBuilder()
-                    .addHeader(QUOTA_USER_PROJECT_HEADER, credentials.getQuotaProjectId())
-                    .addHeader(
-                        "Authorization", "Bearer " + credentials.getAccessToken().getTokenValue());
-        return builder.build();
-      } catch (IOException e) {
-        throw new GoogleAuthException(Reason.FAILED_ADC_REFRESH, e);
-      }
+      OtlpGrpcSpanExporterBuilder builder =
+          ((OtlpGrpcSpanExporter) exporter)
+              .toBuilder().setHeaders(() -> getRequiredHeaderMap(credentials));
+      return builder.build();
     }
     return exporter;
+  }
+
+  private Map<String, String> getRequiredHeaderMap(GoogleCredentials credentials) {
+    Map<String, String> gcpHeaders = new HashMap<>();
+    try {
+      credentials.refreshIfExpired();
+    } catch (IOException e) {
+      throw new GoogleAuthException(Reason.FAILED_ADC_REFRESH, e);
+    }
+    gcpHeaders.put(QUOTA_USER_PROJECT_HEADER, credentials.getQuotaProjectId());
+    gcpHeaders.put("Authorization", "Bearer " + credentials.getAccessToken().getTokenValue());
+    return gcpHeaders;
   }
 
   // Sets the required properties that are essential for exporting OTLP data to GCP.
