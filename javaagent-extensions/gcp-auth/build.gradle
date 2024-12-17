@@ -58,6 +58,8 @@ dependencies {
 	testImplementation platform(libraries.opentelemetry_instrumetation_bom)
 	testImplementation('io.opentelemetry.instrumentation:opentelemetry-instrumentation-annotations')
 	// logging libs - need to be included in the test app
+	testImplementation libraries.slf4j
+	testRuntimeOnly testLibraries.slf4j_simple
 	includedDependencies libraries.slf4j
 	includedDependencies testLibraries.slf4j_simple
 	// testing library and tools
@@ -79,6 +81,7 @@ tasks.register('CopyAgent', Copy) {
 tasks.register('BuildTestApp', org.gradle.jvm.tasks.Jar) {
 	dependsOn 'CopyAgent'
 	dependsOn 'shadowJar'
+	dependsOn 'BuildDummyBackend'
 	archiveFileName.set("auto-instrumented-test-server.jar")
 	from(sourceSets.test.output)
 	// include dependencies in the JAR which are required during runtime
@@ -93,7 +96,23 @@ tasks.register('BuildTestApp', org.gradle.jvm.tasks.Jar) {
 	duplicatesStrategy = DuplicatesStrategy.EXCLUDE
 }
 
+tasks.register('BuildDummyBackend', org.gradle.jvm.tasks.Jar) {
+	archiveFileName.set("dummy-otlp-backend.jar")
+	from(sourceSets.test.output)
+	// include dependencies in the JAR which are required during runtime
+	from {
+		configurations.includedDependencies.collect {
+			it.isDirectory() ? it : zipTree(it)
+		}
+	}
+	manifest {
+		attributes.put('Main-Class', 'com.google.cloud.opentelemetry.extension.auth.testbackend.DummyOTelHttpEndpoint')
+	}
+	duplicatesStrategy = DuplicatesStrategy.EXCLUDE
+}
+
 test {
 	dependsOn 'BuildTestApp'
+	dependsOn 'BuildDummyBackend'
 	useJUnitPlatform()
 }

@@ -15,6 +15,8 @@
  */
 package com.google.cloud.opentelemetry.extension.auth.testapp;
 
+import com.sun.net.httpserver.HttpExchange;
+import com.sun.net.httpserver.HttpHandler;
 import com.sun.net.httpserver.HttpServer;
 import java.io.IOException;
 import java.net.InetSocketAddress;
@@ -25,12 +27,13 @@ public class InstrumentedServer {
   private static final Logger logger = LoggerFactory.getLogger(InstrumentedServer.class);
   private static final int defaultPort = 8080;
   // to run this from command line, execute `gradle run`
-  public static void main(String[] args) throws InterruptedException, IOException {
+  public static void main(String[] args) throws IOException {
     int port = parsePort(args);
     logger.info("Starting the test server on {}", port);
 
     HttpServer server = HttpServer.create(new InetSocketAddress(port), 0);
     server.createContext("/doWork", new TestHandler());
+    server.createContext("/stop", exchange -> server.stop(0));
     server.setExecutor(null); // creates a default executor
     server.start();
     logger.info("Waiting for requests");
