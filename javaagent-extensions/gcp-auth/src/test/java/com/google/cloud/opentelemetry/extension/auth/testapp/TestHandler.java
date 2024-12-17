@@ -17,7 +17,6 @@ package com.google.cloud.opentelemetry.extension.auth.testapp;
 
 import com.sun.net.httpserver.HttpExchange;
 import com.sun.net.httpserver.HttpHandler;
-import io.opentelemetry.instrumentation.annotations.WithSpan;
 import java.io.IOException;
 import java.io.OutputStream;
 import java.util.Random;
@@ -26,9 +25,9 @@ public class TestHandler implements HttpHandler {
   private final Random random = new Random();
 
   @Override
-  @WithSpan
   public void handle(HttpExchange exchange) throws IOException {
     int n = random.nextInt(100);
+    System.out.println("handling");
     String response = n % 2 == 0 ? "Send Response A" : "Send Response B";
     try {
       Thread.sleep(1000);

@@ -34,10 +34,10 @@ jar {
 	enabled = false
 }
 
-// For auto-instrumentation agent, used for running integration test
+// Custom configurations used to facilitate running the integration test
 configurations {
 	agent
-	includedDependencies
+	includeDeps
 }
 
 dependencies {
@@ -54,20 +54,12 @@ dependencies {
 	implementation(libraries.google_auth)
 
 	// test dependencies
-	// OTel instrumentation used in the sample app
-	testImplementation platform(libraries.opentelemetry_instrumetation_bom)
-	testImplementation('io.opentelemetry.instrumentation:opentelemetry-instrumentation-annotations')
-	// logging libs - need to be included in the test app
-	testImplementation libraries.slf4j
-	testRuntimeOnly testLibraries.slf4j_simple
-	includedDependencies libraries.slf4j
-	includedDependencies testLibraries.slf4j_simple
-	// testing library and tools
-	testImplementation("org.testcontainers:testcontainers:1.20.4")
 	testImplementation(testLibraries.junit5)
 	testRuntimeOnly(testLibraries.junit5_runtime)
-
+	// OTel instrumentation used in the sample app to facilitate integration testing
 	agent agentLibraries.agent
+	testImplementation 'org.apache.httpcomponents:httpclient:4.5.14'
+	includeDeps 'org.apache.httpcomponents:httpclient:4.5.14'
 }
 
 // task to copy and rename the Java Auto-Instrumentation Agent into 'libs' folder
@@ -81,38 +73,23 @@ tasks.register('CopyAgent', Copy) {
 tasks.register('BuildTestApp', org.gradle.jvm.tasks.Jar) {
 	dependsOn 'CopyAgent'
 	dependsOn 'shadowJar'
-	dependsOn 'BuildDummyBackend'
-	archiveFileName.set("auto-instrumented-test-server.jar")
-	from(sourceSets.test.output)
-	// include dependencies in the JAR which are required during runtime
-	from {
-		configurations.includedDependencies.collect {
-			it.isDirectory() ? it : zipTree(it)
-		}
-	}
-	manifest {
-		attributes.put('Main-Class', 'com.google.cloud.opentelemetry.extension.auth.testapp.InstrumentedServer')
-	}
-	duplicatesStrategy = DuplicatesStrategy.EXCLUDE
-}
 
-tasks.register('BuildDummyBackend', org.gradle.jvm.tasks.Jar) {
-	archiveFileName.set("dummy-otlp-backend.jar")
-	from(sourceSets.test.output)
-	// include dependencies in the JAR which are required during runtime
+	archiveFileName.set("auto-instrumented-test-server.jar")
+	from(sourceSets.test.output) {
+		include 'com/google/cloud/opentelemetry/extension/auth/testapp/**'
+	}
 	from {
-		configurations.includedDependencies.collect {
+		configurations.includeDeps.collect {
 			it.isDirectory() ? it : zipTree(it)
 		}
 	}
 	manifest {
-		attributes.put('Main-Class', 'com.google.cloud.opentelemetry.extension.auth.testbackend.DummyOTelHttpEndpoint')
+		attributes.put('Main-Class', 'com.google.cloud.opentelemetry.extension.auth.testapp.InstrumentedTestApp')
 	}
 	duplicatesStrategy = DuplicatesStrategy.EXCLUDE
 }
 
 test {
 	dependsOn 'BuildTestApp'
-	dependsOn 'BuildDummyBackend'
 	useJUnitPlatform()
 }

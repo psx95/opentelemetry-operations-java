@@ -15,101 +15,65 @@
  */
 package com.google.cloud.opentelemetry.extension.auth;
 
-import static com.google.cloud.opentelemetry.extension.auth.testbackend.DummyOTelHttpEndpoint.HEADER_VERIFIED;
-import static org.junit.jupiter.api.Assertions.assertDoesNotThrow;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
+import com.google.cloud.opentelemetry.extension.auth.testbackend.DummyOTelHttpEndpoint;
+import com.sun.net.httpserver.HttpServer;
+import java.io.BufferedReader;
 import java.io.File;
 import java.io.IOException;
-import java.net.URI;
-import java.net.http.HttpClient;
-import java.net.http.HttpRequest;
-import java.net.http.HttpResponse;
-import java.net.http.HttpResponse.BodyHandlers;
-import java.util.concurrent.atomic.AtomicReference;
-import org.junit.jupiter.api.AfterAll;
-import org.junit.jupiter.api.BeforeAll;
+import java.io.InputStreamReader;
+import java.lang.ProcessBuilder.Redirect;
 import org.junit.jupiter.api.Test;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
-import org.testcontainers.containers.GenericContainer;
-import org.testcontainers.containers.output.Slf4jLogConsumer;
-import org.testcontainers.containers.wait.strategy.Wait;
-import org.testcontainers.utility.DockerImageName;
-import org.testcontainers.utility.MountableFile;
 
 public class ExtensionIntegrationTest {
 
-  private static final String TEST_SERVER_PATH = "/doWork";
-  private static GenericContainer<?> applicationContainer;
-  private static Integer applicationPort;
-
-  private static final Logger logger = LoggerFactory.getLogger(ExtensionIntegrationTest.class);
-
-  @BeforeAll
-  static void setup() {
+  @Test
+  public void smokeTest() throws IOException, InterruptedException {
     String testAppJarPath =
         new File("./build/libs/auto-instrumented-test-server.jar").getAbsolutePath();
-    String dummyBackendJarPath = new File("./build/libs/dummy-otlp-backend.jar").getAbsolutePath();
+
     String javaAgentJarPath = new File("./build/libs/otel-agent.jar").getAbsolutePath();
     String authExtensionJarPath = new File("./build/libs/gcp-auth-extension.jar").getAbsolutePath();
 
-    DockerImageName dockerBaseImage = DockerImageName.parse("openjdk:17-jdk-slim");
-    int preferredApplicationPort = 8000;
-
-    String runJavaTestApp =
-        "java -javaagent:/agent.jar -Dotel.javaagent.extensions=/auth-ext.jar -Dotel.java.global-autoconfigure.enabled=true -Dgoogle.cloud.project=dummy-test-project -Dotel.exporter.otlp.endpoint=http://localhost:4318/ -Dotel.traces.exporter=otlp,logging -Dotel.metrics.exporter=none -jar /test-app.jar "
-            + preferredApplicationPort;
-    String runOtelBackend = "java -jar /test-backend.jar &";
-
-    applicationContainer =
-        new GenericContainer<>(dockerBaseImage)
-            .withExposedPorts(preferredApplicationPort)
-            .withCopyFileToContainer(
-                MountableFile.forHostPath(dummyBackendJarPath), "/test-backend.jar")
-            .withCopyFileToContainer(MountableFile.forHostPath(testAppJarPath), "/test-app.jar")
-            .withCopyFileToContainer(MountableFile.forHostPath(javaAgentJarPath), "/agent.jar")
-            .withCopyFileToContainer(
-                MountableFile.forHostPath(authExtensionJarPath), "/auth-ext.jar")
-            .withCommand("sh", "-c", runOtelBackend + runJavaTestApp)
-            .withLogConsumer(new Slf4jLogConsumer(logger))
-            .waitingFor(Wait.forLogMessage(".*Waiting for requests.*", 1));
-    applicationContainer.start();
-    applicationPort = applicationContainer.getMappedPort(preferredApplicationPort);
-  }
-
-  @AfterAll
-  static void tearDown() {
-    if (applicationContainer != null) {
-      applicationContainer.stop();
+    HttpServer backendServer;
+    try {
+      backendServer = DummyOTelHttpEndpoint.createTestServer();
+    } catch (IOException e) {
+      throw new RuntimeException(e);
     }
-  }
+    backendServer.start();
+    Process p =
+        new ProcessBuilder(
+                "java",
+                "-javaagent:" + javaAgentJarPath,
+                "-Dotel.javaagent.extensions=" + authExtensionJarPath,
+                "-Dotel.java.global-autoconfigure.enabled=true",
+                "-Dgoogle.cloud.project=dummy-test-project",
+                "-Dotel.exporter.otlp.endpoint=http://localhost:4318",
+                "-Dotel.exporter.otlp.insecure=true",
+                "-Dotel.traces.exporter=otlp,logging",
+                "-Dotel.metrics.exporter=none",
+                "-Dotel.javaagent.debug=false",
+                "-Dotel.exporter.otlp.protocol=http/protobuf",
+                "-jar",
+                testAppJarPath)
+            .redirectError(
+                Redirect.INHERIT) // Redirect stderr from this process to the current process
+            .start();
+    p.waitFor(); // wait for the process running the test app to finish
 
-  @Test
-  public void testSampleAppResponding() {
-    AtomicReference<HttpResponse<String>> response = new AtomicReference<>();
-    assertDoesNotThrow(() -> response.set(sendRequestToSampleApp()));
-    assertEquals(200, response.get().statusCode());
-  }
+    // flush logs from instrumented app process
+    BufferedReader reader = new BufferedReader(new InputStreamReader(p.getInputStream()));
+    reader.lines().forEach(System.out::println);
+    System.out.println("Instrumented app process finished");
 
-  @Test
-  public void testExtensionAttachesCorrectHeaders() throws IOException, InterruptedException {
-    HttpResponse<String> response = sendRequestToSampleApp();
-    assertEquals(200, response.statusCode());
+    backendServer.stop(0); // stop the mock HTTP server
 
-    applicationContainer.waitingFor(Wait.forLogMessage(".*Received trace data.*", 1));
-
-    String logs = applicationContainer.getLogs();
-    assertTrue(logs.contains(HEADER_VERIFIED));
-  }
-
-  private HttpResponse<String> sendRequestToSampleApp() throws IOException, InterruptedException {
-    String url =
-        "http://" + applicationContainer.getHost() + ":" + applicationPort + TEST_SERVER_PATH;
-    HttpClient client = HttpClient.newHttpClient();
-    HttpRequest request = HttpRequest.newBuilder().uri(URI.create(url)).build();
-
-    return client.send(request, BodyHandlers.ofString());
+    // assert on number of requests
+    assertEquals(1, DummyOTelHttpEndpoint.receivedRequests.size());
+    // ensure headers were verified for all requests
+    DummyOTelHttpEndpoint.receivedRequests.forEach((request, verified) -> assertTrue(verified));
   }
 }
