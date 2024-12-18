@@ -44,17 +44,21 @@ public class ExtensionIntegrationTest {
       throw new RuntimeException(e);
     }
     backendServer.start();
+    int backendServerPort = backendServer.getAddress().getPort();
+    System.out.println("Started OTLP HTTP Endpoint on localhost:" + backendServerPort);
     Process p =
         new ProcessBuilder(
                 "java",
                 "-javaagent:" + javaAgentJarPath,
                 "-Dotel.javaagent.extensions=" + authExtensionJarPath,
-                "-Dotel.java.global-autoconfigure.enabled=true",
                 "-Dgoogle.cloud.project=dummy-test-project",
-                "-Dotel.exporter.otlp.endpoint=http://localhost:4318",
+                "-Dotel.java.global-autoconfigure.enabled=true",
+                "-Dotel.javaagent.logging=none",
+                "-Dotel.exporter.otlp.endpoint=http://localhost:" + backendServerPort,
                 "-Dotel.exporter.otlp.insecure=true",
-                "-Dotel.traces.exporter=otlp,logging",
+                "-Dotel.traces.exporter=otlp",
                 "-Dotel.metrics.exporter=none",
+                "-Dotel.logs.exporter=none",
                 "-Dotel.javaagent.debug=false",
                 "-Dotel.exporter.otlp.protocol=http/protobuf",
                 "-jar",

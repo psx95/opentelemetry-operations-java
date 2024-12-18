@@ -28,12 +28,11 @@ import org.apache.http.util.EntityUtils;
 
 public class InstrumentedTestApp {
   private static final String serverUrl = "http://localhost:%d/%s";
-  private static final int defaultPort = 8080;
 
   public static void main(String[] args) throws IOException, InterruptedException {
-    int port = parsePort(args);
-
-    HttpServer server = HttpServer.create(new InetSocketAddress(port), 0);
+    int port;
+    HttpServer server = HttpServer.create(new InetSocketAddress(0), 0);
+    port = server.getAddress().getPort();
     server.createContext("/doWork", new TestHandler());
     server.createContext(
         "/stop",
@@ -48,7 +47,7 @@ public class InstrumentedTestApp {
         });
     server.setExecutor(null); // creates a default executor
     server.start();
-    System.out.println("Server ready");
+    System.out.println("Starting Server at port " + port);
     System.out.println("Sending request to do work ...");
     makeCall(String.format(serverUrl, port, "doWork"));
     Thread.sleep(1000);
@@ -71,22 +70,5 @@ public class InstrumentedTestApp {
     } catch (IOException e) {
       System.err.println("Error making request: " + e.getMessage());
     }
-  }
-
-  private static int parsePort(String[] args) {
-    int port;
-    if (args.length > 0) {
-      try {
-        port = Integer.parseInt(args[0]);
-        if (port < 0 || port > 65535) {
-          throw new NumberFormatException("Port number must be between 0 and 65535");
-        }
-        return port;
-      } catch (NumberFormatException e) {
-        System.err.println("Invalid port number provided: " + args[0]);
-        System.err.println("Using default port: " + defaultPort);
-      }
-    }
-    return defaultPort;
   }
 }

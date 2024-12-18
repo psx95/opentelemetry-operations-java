@@ -32,9 +32,7 @@ public class DummyOTelHttpEndpoint {
   public static Map<String, Boolean> receivedRequests = new HashMap<>();
 
   public static HttpServer createTestServer() throws IOException {
-    int port = 4318; // Use a different port than gRPC (e.g., 4318)
-
-    HttpServer server = HttpServer.create(new InetSocketAddress(port), 0);
+    HttpServer server = HttpServer.create(new InetSocketAddress(0), 0);
     server.createContext("/v1/traces", new TraceHandler()); // Handle traces
     server.setExecutor(null); // Use default thread pool
     return server;
