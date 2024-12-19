@@ -56,6 +56,7 @@ public class ExtensionIntegrationTest {
                 "-Dotel.javaagent.logging=none",
                 "-Dotel.exporter.otlp.endpoint=http://localhost:" + backendServerPort,
                 "-Dotel.exporter.otlp.insecure=true",
+                "-Dotel.resource.providers.gcp.enabled=true",
                 "-Dotel.traces.exporter=otlp",
                 "-Dotel.metrics.exporter=none",
                 "-Dotel.logs.exporter=none",

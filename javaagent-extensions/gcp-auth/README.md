@@ -59,10 +59,11 @@ application {
   // Configure the GCP Auth extension using system properties.
   // This can also be configured using environment variables.
   "-Dgoogle.cloud.project=${googleCloudProjectId}",
-  "-Dgoogle.cloud.region=${googleCloudRegion}",  
   // Configure auto instrumentation.
   "-Dotel.exporter.otlp.traces.endpoint=${googleOtlpEndpoint}",
   '-Dotel.java.global-autoconfigure.enabled=true',
+  // Optionally enable the built-in GCP resource detector
+  '-Dotel.resource.providers.gcp.enabled=true'
   '-Dotel.traces.exporter=otlp',
   '-Dotel.metrics.exporter=logging',
 }

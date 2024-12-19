@@ -74,7 +74,6 @@ public class GcpAuthAutoConfigurationCustomizerProvider
       autoConfiguration
           .addSpanExporterCustomizer(
               (exporter, configProperties) -> addAuthorizationHeaders(exporter, credentials))
-          .addPropertiesSupplier(this::getRequiredProperties)
           .addResourceCustomizer(this::customizeResource);
     } catch (IOException e) {
       throw new GoogleAuthException(Reason.FAILED_ADC_RETRIEVAL, e);
@@ -114,13 +113,6 @@ public class GcpAuthAutoConfigurationCustomizerProvider
     gcpHeaders.put(QUOTA_USER_PROJECT_HEADER, credentials.getQuotaProjectId());
     gcpHeaders.put("Authorization", "Bearer " + credentials.getAccessToken().getTokenValue());
     return gcpHeaders;
-  }
-
-  // Sets the required properties that are essential for exporting OTLP data to GCP.
-  private Map<String, String> getRequiredProperties() {
-    Map<String, String> properties = new HashMap<>();
-    properties.put("otel.resource.providers.gcp.enabled", "true");
-    return properties;
   }
 
   // Updates the current resource with the attributes required for ingesting OTLP data on GCP.
