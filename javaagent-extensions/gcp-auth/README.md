@@ -33,8 +33,7 @@ Here is a list of configurable options for the extension:
 
  - `GOOGLE_CLOUD_PROJECT`: Environment variable that represents the Google Cloud Project ID to which the telemetry needs to be exported.
    - Can also be configured using `google.cloud.project` system property.
-
-It is **mandatory** to configure this option for the extension, not doing so would lead to a `ConfigurationException`.
+   - If this option is not configured, the extension would infer GCP Project ID from the application default credentials. For more information on application default credentials, see [here](https://cloud.google.com/docs/authentication/application-default-credentials).
 
 ## Usage
 
