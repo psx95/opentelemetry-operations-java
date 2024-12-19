@@ -117,11 +117,20 @@ public class GcpAuthAutoConfigurationCustomizerProvider
 
   // Updates the current resource with the attributes required for ingesting OTLP data on GCP.
   private Resource customizeResource(Resource resource, ConfigProperties configProperties) {
+    String gcpProjectId =
+        ConfigurableOption.GOOGLE_CLOUD_PROJECT.getConfiguredValueWithFallback(
+            () -> {
+              try {
+                GoogleCredentials googleCredentials = GoogleCredentials.getApplicationDefault();
+                return googleCredentials.getQuotaProjectId();
+              } catch (IOException e) {
+                throw new GoogleAuthException(Reason.FAILED_ADC_RETRIEVAL, e);
+              }
+            });
+
     Resource res =
         Resource.create(
-            Attributes.of(
-                AttributeKey.stringKey(GCP_USER_PROJECT_ID_KEY),
-                ConfigurableOption.GOOGLE_CLOUD_PROJECT.getConfiguredValue()));
+            Attributes.of(AttributeKey.stringKey(GCP_USER_PROJECT_ID_KEY), gcpProjectId));
     return resource.merge(res);
   }
 }

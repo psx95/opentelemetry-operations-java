@@ -17,6 +17,7 @@ package com.google.cloud.opentelemetry.extension.auth;
 
 import io.opentelemetry.sdk.autoconfigure.spi.ConfigurationException;
 import java.util.Locale;
+import java.util.function.Supplier;
 
 /**
  * An enum representing configurable options for a GCP Authentication Extension. Each option has a
@@ -65,7 +66,7 @@ public enum ConfigurableOption {
    * Retrieves the configured value for this option. This method checks the environment variable
    * first and then the system property.
    *
-   * @return the configured value as a string, or throws an exception if not configured.
+   * @return The configured value as a string, or throws an exception if not configured.
    * @throws ConfigurationException if neither the environment variable nor the system property is
    *     set.
    */
@@ -84,6 +85,24 @@ public enum ConfigurableOption {
               this.userReadableName,
               this.getEnvironmentVariable(),
               this.getSystemProperty()));
+    }
+  }
+
+  /**
+   * Retrieves the value for this option, prioritizing environment variables and system properties.
+   * If neither an environment variable nor a system property is set for this option, the provided
+   * fallback function is used to determine the value.
+   *
+   * @param fallback A {@link Supplier} that provides the default value for the option when it is
+   *     not explicitly configured via an environment variable or system property.
+   * @return The configured value for the option, obtained from the environment variable, system
+   *     property, or the fallback function, in that order of precedence.
+   */
+  String getConfiguredValueWithFallback(Supplier<String> fallback) {
+    try {
+      return this.getConfiguredValue();
+    } catch (ConfigurationException e) {
+      return fallback.get();
     }
   }
 }
