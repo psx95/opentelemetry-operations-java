@@ -1,0 +1,102 @@
+/*
+ * Copyright 2024 Google LLC
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+plugins {
+	id 'java'
+	id 'java-library'
+	id 'com.github.johnrengelman.shadow'
+}
+
+description = 'OpenTelemetry Java Agent Extension that enables authentication support for OTLP exporters'
+
+tasks {
+	assemble.dependsOn(shadowJar)
+}
+
+shadowJar {
+	archiveFileName.set("gcp-auth-extension.jar")
+}
+
+jar {
+	// Disable standard jar
+	enabled = false
+}
+
+// Custom configurations used to facilitate running the integration test
+configurations {
+	agent
+	includeDeps
+}
+
+dependencies {
+	annotationProcessor(libraries.auto_service)
+	// We use `compileOnly` dependency because during runtime all necessary classes are provided by javaagent itself.
+	compileOnly(libraries.auto_service_annotations)
+	compileOnly(libraries.opentelemetry_api)
+	compileOnly(libraries.opentelemetry_otlp_exporter)
+	compileOnly(libraries.opentelemetry_sdk_autoconf)
+	compileOnly(libraries.opentelemetry_autoconfigure_spi)
+
+	//  Only dependencies added to `implementation` configuration will be picked up by Shadow plugin
+	//  and added to the resulting jar for our extension's distribution.
+	implementation(libraries.google_auth)
+
+	// test dependencies
+	testImplementation(testLibraries.junit5)
+	testImplementation(libraries.opentelemetry_api)
+	testImplementation(libraries.opentelemetry_otlp_exporter)
+	testRuntimeOnly(testLibraries.junit5_runtime)
+	testImplementation(testLibraries.opentelemetry_sdk_testing)
+	testImplementation(testLibraries.mockito)
+	testImplementation(testLibraries.mockito_jupiter)
+	testImplementation(libraries.opentelemetry_sdk_autoconf)
+	// OTel instrumentation used in the sample app to facilitate integration testing
+	agent agentLibraries.agent
+	testImplementation 'org.awaitility:awaitility:4.2.2'
+	testImplementation 'org.apache.httpcomponents:httpclient:4.5.14'
+	includeDeps 'org.apache.httpcomponents:httpclient:4.5.14'
+}
+
+// task to copy and rename the Java Auto-Instrumentation Agent into 'libs' folder
+tasks.register('CopyAgent', Copy) {
+	into layout.buildDirectory.dir("libs")
+	from configurations.agent {
+		rename "opentelemetry-javaagent(.*).jar", "otel-agent.jar"
+	}
+}
+
+tasks.register('BuildTestApp', org.gradle.jvm.tasks.Jar) {
+	dependsOn 'CopyAgent'
+	dependsOn 'shadowJar'
+
+	archiveFileName.set("auto-instrumented-test-server.jar")
+	from(sourceSets.test.output) {
+		include 'com/google/cloud/opentelemetry/extension/auth/testapp/**'
+	}
+	from {
+		configurations.includeDeps.collect {
+			it.isDirectory() ? it : zipTree(it)
+		}
+	}
+	manifest {
+		attributes.put('Main-Class', 'com.google.cloud.opentelemetry.extension.auth.testapp.InstrumentedTestApp')
+	}
+	duplicatesStrategy = DuplicatesStrategy.EXCLUDE
+}
+
+test {
+	dependsOn 'BuildTestApp'
+	useJUnitPlatform()
+}
