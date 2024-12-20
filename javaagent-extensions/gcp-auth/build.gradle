@@ -55,9 +55,16 @@ dependencies {
 
 	// test dependencies
 	testImplementation(testLibraries.junit5)
+	testImplementation(libraries.opentelemetry_api)
+	testImplementation(libraries.opentelemetry_otlp_exporter)
 	testRuntimeOnly(testLibraries.junit5_runtime)
+	testImplementation(testLibraries.opentelemetry_sdk_testing)
+	testImplementation(testLibraries.mockito)
+	testImplementation(testLibraries.mockito_jupiter)
+	testImplementation(libraries.opentelemetry_sdk_autoconf)
 	// OTel instrumentation used in the sample app to facilitate integration testing
 	agent agentLibraries.agent
+	testImplementation 'org.awaitility:awaitility:4.2.2'
 	testImplementation 'org.apache.httpcomponents:httpclient:4.5.14'
 	includeDeps 'org.apache.httpcomponents:httpclient:4.5.14'
 }

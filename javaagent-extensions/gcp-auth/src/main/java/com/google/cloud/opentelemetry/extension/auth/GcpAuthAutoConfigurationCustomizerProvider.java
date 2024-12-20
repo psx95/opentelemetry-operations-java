@@ -50,8 +50,8 @@ import java.util.Map;
 public class GcpAuthAutoConfigurationCustomizerProvider
     implements AutoConfigurationCustomizerProvider {
 
-  private static final String QUOTA_USER_PROJECT_HEADER = "X-Goog-User-Project";
-  private static final String GCP_USER_PROJECT_ID_KEY = "gcp.project_id";
+  static final String QUOTA_USER_PROJECT_HEADER = "X-Goog-User-Project";
+  static final String GCP_USER_PROJECT_ID_KEY = "gcp.project_id";
 
   /**
    * Customizes the provided {@link AutoConfigurationCustomizer}.
