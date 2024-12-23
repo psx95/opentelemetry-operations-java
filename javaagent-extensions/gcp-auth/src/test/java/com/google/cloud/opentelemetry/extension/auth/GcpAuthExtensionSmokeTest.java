@@ -1,0 +1,190 @@
+/*
+ * Copyright 2024 Google LLC
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+package com.google.cloud.opentelemetry.extension.auth;
+
+import static com.google.cloud.opentelemetry.extension.auth.GcpAuthAutoConfigurationCustomizerProvider.GCP_USER_PROJECT_ID_KEY;
+import static com.google.cloud.opentelemetry.extension.auth.GcpAuthAutoConfigurationCustomizerProvider.QUOTA_USER_PROJECT_HEADER;
+import static org.awaitility.Awaitility.await;
+import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertTrue;
+import static org.mockserver.model.HttpRequest.request;
+import static org.mockserver.model.HttpResponse.response;
+import static org.mockserver.stop.Stop.stopQuietly;
+
+import com.google.cloud.opentelemetry.extension.auth.springapp.Application;
+import com.google.protobuf.InvalidProtocolBufferException;
+import io.opentelemetry.proto.collector.trace.v1.ExportTraceServiceRequest;
+import io.opentelemetry.proto.common.v1.AnyValue;
+import io.opentelemetry.proto.common.v1.KeyValue;
+import io.opentelemetry.proto.trace.v1.ResourceSpans;
+import java.net.URI;
+import java.util.Arrays;
+import java.util.List;
+import java.util.Optional;
+import java.util.concurrent.TimeUnit;
+import java.util.stream.Collectors;
+import org.junit.jupiter.api.AfterAll;
+import org.junit.jupiter.api.BeforeAll;
+import org.junit.jupiter.api.Test;
+import org.mockserver.client.MockServerClient;
+import org.mockserver.integration.ClientAndServer;
+import org.mockserver.model.Body;
+import org.mockserver.model.Headers;
+import org.mockserver.model.HttpRequest;
+import org.mockserver.model.JsonBody;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.boot.test.context.SpringBootTest;
+import org.springframework.boot.test.context.SpringBootTest.WebEnvironment;
+import org.springframework.boot.test.web.client.TestRestTemplate;
+import org.springframework.boot.test.web.server.LocalServerPort;
+import org.springframework.http.ResponseEntity;
+
+@SpringBootTest(
+    classes = {Application.class},
+    webEnvironment = WebEnvironment.RANDOM_PORT)
+public class GcpAuthExtensionSmokeTest {
+
+  @LocalServerPort private int testApplicationPort; // port at which the spring app is running
+
+  @Autowired private TestRestTemplate template;
+
+  // The port at which the backend server will recieve telemetry
+  private static final int EXPORTER_ENDPOINT_PORT = 4318;
+  // The port at which the mock GCP metadata server will run
+  private static final int MOCK_GCP_METADATA_PORT = 8090;
+
+  // Backend server to which the application under test will export traces
+  // the export config is specified in the build.gradle file.
+  private static ClientAndServer backendServer;
+
+  // Mock server to intercept calls to the GCP metadata server and provide fake credentials
+  private static ClientAndServer mockGcpMetadataServer;
+
+  private static final String METADATA_GOOGLE_INTERNAL = "metadata.google.internal";
+  private static final String DUMMY_GCP_QUOTA_PROJECT = System.getenv("GOOGLE_CLOUD_QUOTA_PROJECT");
+  private static final String DUMMY_GCP_PROJECT = System.getProperty("google.cloud.project");
+
+  @BeforeAll
+  public static void setup() {
+    // Set up the mock server to always respond with 200
+    // Setup proxy host
+    System.setProperty("http.proxyHost", "localhost");
+    System.setProperty("http.proxyPort", MOCK_GCP_METADATA_PORT + "");
+    System.setProperty("http.nonProxyHost", "localhost");
+
+    // Set up mock OTLP backend server to which traces will be exported
+    backendServer = ClientAndServer.startClientAndServer(EXPORTER_ENDPOINT_PORT);
+    backendServer.when(request()).respond(response().withStatusCode(200));
+
+    // Set up the mock gcp metadata server to provide fake credentials
+    String accessTokenResponse =
+        "{\"access_token\": \"fake.access_token\",\"expires_in\": 3600, \"token_type\": \"Bearer\"}";
+    mockGcpMetadataServer = ClientAndServer.startClientAndServer(MOCK_GCP_METADATA_PORT);
+    MockServerClient mockServerClient = new MockServerClient("localhost", MOCK_GCP_METADATA_PORT);
+    mockServerClient
+        .when(
+            request()
+                .withMethod("GET")
+                .withPath("/computeMetadata/v1/instance/service-accounts/default/token")
+                .withHeader("Host", METADATA_GOOGLE_INTERNAL)
+                .withHeader("Metadata-Flavor", "Google"))
+        .respond(
+            response()
+                .withStatusCode(200)
+                .withHeader("Content-Type", "application/json")
+                .withBody(new JsonBody(accessTokenResponse)));
+  }
+
+  @AfterAll
+  public static void teardown() {
+    // Stop the backend server
+    stopQuietly(backendServer);
+    stopQuietly(mockGcpMetadataServer);
+  }
+
+  @Test
+  public void authExtensionSmokeTest() {
+    ResponseEntity<?> a =
+        template.getForEntity(
+            URI.create("http://localhost:" + testApplicationPort + "/ping"), String.class);
+    System.out.println("resp is " + a.toString());
+
+    await()
+        .atMost(10, TimeUnit.SECONDS)
+        .untilAsserted(
+            () -> {
+              HttpRequest[] requests = backendServer.retrieveRecordedRequests(request());
+              List<Headers> extractedHeaders = extractHeadersFromRequests(requests);
+              verifyRequestHeaders(extractedHeaders);
+
+              List<ResourceSpans> extractedResourceSpans =
+                  extractResourceSpansFromRequests(requests);
+              verifyResourceAttributes(extractedResourceSpans);
+            });
+  }
+
+  // Helper methods
+
+  private void verifyResourceAttributes(List<ResourceSpans> extractedResourceSpans) {
+    extractedResourceSpans.forEach(
+        resourceSpan ->
+            assertTrue(
+                resourceSpan
+                    .getResource()
+                    .getAttributesList()
+                    .contains(
+                        KeyValue.newBuilder()
+                            .setKey(GCP_USER_PROJECT_ID_KEY)
+                            .setValue(AnyValue.newBuilder().setStringValue(DUMMY_GCP_PROJECT))
+                            .build())));
+  }
+
+  private void verifyRequestHeaders(List<Headers> extractedHeaders) {
+    assertFalse(extractedHeaders.isEmpty());
+    // verify if extension added the required headers
+    extractedHeaders.forEach(
+        headers -> {
+          assertTrue(headers.containsEntry(QUOTA_USER_PROJECT_HEADER, DUMMY_GCP_QUOTA_PROJECT));
+          assertTrue(headers.containsEntry("Authorization", "Bearer fake.access_token"));
+        });
+  }
+
+  private List<Headers> extractHeadersFromRequests(HttpRequest[] requests) {
+    return Arrays.stream(requests).map(HttpRequest::getHeaders).collect(Collectors.toList());
+  }
+
+  /**
+   * Extract resource spans from http requests received by a telemetry collector.
+   *
+   * @param requests Request received by a http server trace collector
+   * @return spans extracted from the request body
+   */
+  private List<ResourceSpans> extractResourceSpansFromRequests(HttpRequest[] requests) {
+    return Arrays.stream(requests)
+        .map(HttpRequest::getBody)
+        .flatMap(body -> getExportTraceServiceRequest(body).stream())
+        .flatMap(r -> r.getResourceSpansList().stream())
+        .collect(Collectors.toList());
+  }
+
+  private Optional<ExportTraceServiceRequest> getExportTraceServiceRequest(Body<?> body) {
+    try {
+      return Optional.ofNullable(ExportTraceServiceRequest.parseFrom(body.getRawBytes()));
+    } catch (InvalidProtocolBufferException e) {
+      return Optional.empty();
+    }
+  }
+}

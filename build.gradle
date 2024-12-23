@@ -227,6 +227,7 @@ subprojects {
 			mockito     : "org.mockito:mockito-inline:${mockitoVersion}",
 			mockito_jupiter: "org.mockito:mockito-junit-jupiter:${mockitoVersion}",
 			slf4j_simple: "org.slf4j:slf4j-simple:${slf4jVersion}",
+			spring_boot_starter_test: "org.springframework.boot:spring-boot-starter-test:${springVersion}",
 			opentelemetry_sdk_testing: "io.opentelemetry:opentelemetry-sdk-testing:${openTelemetryVersion}",
 			test_containers: "org.testcontainers:testcontainers:${testContainersVersion}",
 			wiremock    : "com.github.tomakehurst:wiremock-jre8:${wiremockVersion}",
