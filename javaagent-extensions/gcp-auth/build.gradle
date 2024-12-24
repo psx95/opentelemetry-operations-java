@@ -13,28 +13,11 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-import org.springframework.boot.gradle.tasks.run.BootRun
-
-/*
- * Copyright 2024 Google LLC
- *
- * Licensed under the Apache License, Version 2.0 (the "License");
- * you may not use this file except in compliance with the License.
- * You may obtain a copy of the License at
- *
- *     http://www.apache.org/licenses/LICENSE-2.0
- *
- * Unless required by applicable law or agreed to in writing, software
- * distributed under the License is distributed on an "AS IS" BASIS,
- * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
- * See the License for the specific language governing permissions and
- * limitations under the License.
- */
 plugins {
 	id 'java'
 	id 'java-library'
 	id 'com.github.johnrengelman.shadow'
-	id 'org.springframework.boot' version '3.4.1'
+	id 'org.springframework.boot' version '2.7.18'
 }
 
 description = 'OpenTelemetry Java Agent Extension that enables authentication support for OTLP exporters'
@@ -55,7 +38,6 @@ jar {
 // Custom configurations used to facilitate running the integration test
 configurations {
 	agent
-	includeDeps
 }
 
 dependencies {
@@ -72,10 +54,10 @@ dependencies {
 	implementation(libraries.google_auth)
 
 	// test dependencies
+	testRuntimeOnly(testLibraries.junit5_runtime)
 	testImplementation(testLibraries.junit5)
 	testImplementation(libraries.opentelemetry_api)
 	testImplementation(libraries.opentelemetry_otlp_exporter)
-	testRuntimeOnly(testLibraries.junit5_runtime)
 	testImplementation(testLibraries.opentelemetry_sdk_testing)
 	testImplementation(testLibraries.mockito)
 	testImplementation(testLibraries.mockito_jupiter)
@@ -84,13 +66,11 @@ dependencies {
 	testImplementation(libraries.spring_boot_starter_web)
 	testImplementation(testLibraries.spring_boot_starter_test)
 	testImplementation("org.mock-server:mockserver-netty:5.15.0")
+	testImplementation("org.awaitility:awaitility:4.2.2")
 	testImplementation("io.opentelemetry.proto:opentelemetry-proto:1.4.0-alpha")
 	testImplementation("io.opentelemetry.instrumentation:opentelemetry-instrumentation-annotations:2.8.0")
 	// OTel instrumentation used in the sample app to facilitate integration testing
 	agent agentLibraries.agent
-	testImplementation 'org.awaitility:awaitility:4.2.2'
-	testImplementation 'org.apache.httpcomponents:httpclient:4.5.14'
-	includeDeps 'org.apache.httpcomponents:httpclient:4.5.14'
 }
 
 // task to copy and rename the Java Auto-Instrumentation Agent into 'libs' folder
@@ -99,25 +79,6 @@ tasks.register('copyAgent', Copy) {
 	from configurations.agent {
 		rename "opentelemetry-javaagent(.*).jar", "otel-agent.jar"
 	}
-}
-
-tasks.register('BuildTestApp', org.gradle.jvm.tasks.Jar) {
-	dependsOn 'copyAgent'
-	dependsOn 'shadowJar'
-
-	archiveFileName.set("auto-instrumented-test-server.jar")
-	from(sourceSets.test.output) {
-		include 'com/google/cloud/opentelemetry/extension/auth/testapp/**'
-	}
-	from {
-		configurations.includeDeps.collect {
-			it.isDirectory() ? it : zipTree(it)
-		}
-	}
-	manifest {
-		attributes.put('Main-Class', 'com.google.cloud.opentelemetry.extension.auth.testapp.InstrumentedTestApp')
-	}
-	duplicatesStrategy = DuplicatesStrategy.EXCLUDE
 }
 
 def builtLibsDir = layout.buildDirectory.dir("libs").get().toString()
