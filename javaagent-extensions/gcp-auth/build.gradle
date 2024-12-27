@@ -103,7 +103,10 @@ test {
 	dependsOn 'copyAgent'
 	useJUnitPlatform()
 
-	environment("GOOGLE_CLOUD_QUOTA_PROJECT", "test-project-id")
+	def fakeCredsFilePath = project.file("src/test/resources/fakecreds.json").getAbsolutePath()
+
+	environment("GOOGLE_CLOUD_QUOTA_PROJECT", "quota-project-id")
+	environment("GOOGLE_APPLICATION_CREDENTIALS", fakeCredsFilePath.toString())
 	jvmArgs = [
 		"-javaagent:${javaAgentJarPath}",
 		"-Dotel.javaagent.extensions=${authExtensionJarPath}",

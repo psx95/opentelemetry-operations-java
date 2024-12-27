@@ -31,11 +31,18 @@ import io.opentelemetry.proto.common.v1.AnyValue;
 import io.opentelemetry.proto.common.v1.KeyValue;
 import io.opentelemetry.proto.trace.v1.ResourceSpans;
 import java.net.URI;
+import java.security.KeyManagementException;
+import java.security.NoSuchAlgorithmException;
+import java.security.cert.X509Certificate;
 import java.util.Arrays;
 import java.util.List;
 import java.util.Optional;
 import java.util.concurrent.TimeUnit;
 import java.util.stream.Collectors;
+import javax.net.ssl.HttpsURLConnection;
+import javax.net.ssl.SSLContext;
+import javax.net.ssl.TrustManager;
+import javax.net.ssl.X509TrustManager;
 import org.junit.jupiter.api.AfterAll;
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.Test;
@@ -61,7 +68,7 @@ public class GcpAuthExtensionSmokeTest {
 
   @Autowired private TestRestTemplate template;
 
-  // The port at which the backend server will recieve telemetry
+  // The port at which the backend server will receive telemetry
   private static final int EXPORTER_ENDPOINT_PORT = 4318;
   // The port at which the mock GCP metadata server will run
   private static final int MOCK_GCP_METADATA_PORT = 8090;
@@ -78,12 +85,19 @@ public class GcpAuthExtensionSmokeTest {
   private static final String DUMMY_GCP_PROJECT = System.getProperty("google.cloud.project");
 
   @BeforeAll
-  public static void setup() {
+  public static void setup() throws NoSuchAlgorithmException, KeyManagementException {
     // Set up the mock server to always respond with 200
     // Setup proxy host
     System.setProperty("http.proxyHost", "localhost");
     System.setProperty("http.proxyPort", MOCK_GCP_METADATA_PORT + "");
+    System.setProperty("https.proxyHost", "localhost");
+    System.setProperty("https.proxyPort", MOCK_GCP_METADATA_PORT + "");
     System.setProperty("http.nonProxyHost", "localhost");
+    System.setProperty("https.nonProxyHost", "localhost");
+
+    // Disable SSL validation for integration test
+    // The OAuth2 token validation requires SSL validation
+    disableSSLValidation();
 
     // Set up mock OTLP backend server to which traces will be exported
     backendServer = ClientAndServer.startClientAndServer(EXPORTER_ENDPOINT_PORT);
@@ -93,7 +107,19 @@ public class GcpAuthExtensionSmokeTest {
     String accessTokenResponse =
         "{\"access_token\": \"fake.access_token\",\"expires_in\": 3600, \"token_type\": \"Bearer\"}";
     mockGcpMetadataServer = ClientAndServer.startClientAndServer(MOCK_GCP_METADATA_PORT);
-    MockServerClient mockServerClient = new MockServerClient("localhost", MOCK_GCP_METADATA_PORT);
+
+    MockServerClient mockServerClient =
+        new MockServerClient("localhost", MOCK_GCP_METADATA_PORT).withSecure(true);
+
+    // mock the token refresh
+    mockServerClient
+        .when(request().withMethod("POST").withPath("/token"))
+        .respond(
+            response()
+                .withStatusCode(200)
+                .withHeader("Content-Type", "application/json")
+                .withBody(new JsonBody(accessTokenResponse)));
+    // mock the gcp metadata server
     mockServerClient
         .when(
             request()
@@ -137,6 +163,33 @@ public class GcpAuthExtensionSmokeTest {
   }
 
   // Helper methods
+
+  private static void disableSSLValidation()
+      throws NoSuchAlgorithmException, KeyManagementException {
+    TrustManager[] trustAllCerts =
+        new TrustManager[] {
+          new X509TrustManager() {
+            @Override
+            public void checkClientTrusted(X509Certificate[] chain, String authType) {
+              System.out.println("Reached checkClientTrusted");
+            }
+
+            @Override
+            public void checkServerTrusted(X509Certificate[] chain, String authType) {
+              System.out.println("Reached checkServerTrusted");
+            }
+
+            @Override
+            public X509Certificate[] getAcceptedIssuers() {
+              System.out.println("No acceptedIssuers");
+              return null;
+            }
+          }
+        };
+    SSLContext sc = SSLContext.getInstance("SSL");
+    sc.init(null, trustAllCerts, new java.security.SecureRandom());
+    HttpsURLConnection.setDefaultSSLSocketFactory(sc.getSocketFactory());
+  }
 
   private void verifyResourceAttributes(List<ResourceSpans> extractedResourceSpans) {
     extractedResourceSpans.forEach(
