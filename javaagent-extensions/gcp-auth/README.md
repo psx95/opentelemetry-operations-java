@@ -48,7 +48,6 @@ def otelAgentPath = <OpenTelemetry Java Agent location>
 // Specify the path for Google Cloud Authentication Extension for the Java Agent.
 def extensionPath = <Google Cloud Authentication Extension location>
 def googleCloudProjectId = <Your Google Cloud Project ID>
-def googleCloudRegion = <Your preferred Google Cloud Region>
 def googleOtlpEndpoint = <Google Cloud OTLP endpoint>
 
 application {

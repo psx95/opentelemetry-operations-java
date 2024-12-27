@@ -62,7 +62,7 @@ import org.springframework.http.ResponseEntity;
 @SpringBootTest(
     classes = {Application.class},
     webEnvironment = WebEnvironment.RANDOM_PORT)
-public class GcpAuthExtensionSmokeTest {
+public class GcpAuthExtensionEndToEndTest {
 
   @LocalServerPort private int testApplicationPort; // port at which the spring app is running
 
@@ -70,28 +70,26 @@ public class GcpAuthExtensionSmokeTest {
 
   // The port at which the backend server will receive telemetry
   private static final int EXPORTER_ENDPOINT_PORT = 4318;
-  // The port at which the mock GCP metadata server will run
-  private static final int MOCK_GCP_METADATA_PORT = 8090;
+  // The port at which the mock GCP OAuth 2.0 server will run
+  private static final int MOCK_GCP_OAUTH2_PORT = 8090;
 
   // Backend server to which the application under test will export traces
   // the export config is specified in the build.gradle file.
   private static ClientAndServer backendServer;
 
-  // Mock server to intercept calls to the GCP metadata server and provide fake credentials
-  private static ClientAndServer mockGcpMetadataServer;
+  // Mock server to intercept calls to the GCP OAuth 2.0 server and provide fake credentials
+  private static ClientAndServer mockGcpOAuth2Server;
 
-  private static final String METADATA_GOOGLE_INTERNAL = "metadata.google.internal";
   private static final String DUMMY_GCP_QUOTA_PROJECT = System.getenv("GOOGLE_CLOUD_QUOTA_PROJECT");
   private static final String DUMMY_GCP_PROJECT = System.getProperty("google.cloud.project");
 
   @BeforeAll
   public static void setup() throws NoSuchAlgorithmException, KeyManagementException {
-    // Set up the mock server to always respond with 200
-    // Setup proxy host
+    // Setup proxy host(s)
     System.setProperty("http.proxyHost", "localhost");
-    System.setProperty("http.proxyPort", MOCK_GCP_METADATA_PORT + "");
+    System.setProperty("http.proxyPort", MOCK_GCP_OAUTH2_PORT + "");
     System.setProperty("https.proxyHost", "localhost");
-    System.setProperty("https.proxyPort", MOCK_GCP_METADATA_PORT + "");
+    System.setProperty("https.proxyPort", MOCK_GCP_OAUTH2_PORT + "");
     System.setProperty("http.nonProxyHost", "localhost");
     System.setProperty("https.nonProxyHost", "localhost");
 
@@ -106,27 +104,14 @@ public class GcpAuthExtensionSmokeTest {
     // Set up the mock gcp metadata server to provide fake credentials
     String accessTokenResponse =
         "{\"access_token\": \"fake.access_token\",\"expires_in\": 3600, \"token_type\": \"Bearer\"}";
-    mockGcpMetadataServer = ClientAndServer.startClientAndServer(MOCK_GCP_METADATA_PORT);
+    mockGcpOAuth2Server = ClientAndServer.startClientAndServer(MOCK_GCP_OAUTH2_PORT);
 
     MockServerClient mockServerClient =
-        new MockServerClient("localhost", MOCK_GCP_METADATA_PORT).withSecure(true);
+        new MockServerClient("localhost", MOCK_GCP_OAUTH2_PORT).withSecure(true);
 
-    // mock the token refresh
+    // mock the token refresh - always respond with 200
     mockServerClient
         .when(request().withMethod("POST").withPath("/token"))
-        .respond(
-            response()
-                .withStatusCode(200)
-                .withHeader("Content-Type", "application/json")
-                .withBody(new JsonBody(accessTokenResponse)));
-    // mock the gcp metadata server
-    mockServerClient
-        .when(
-            request()
-                .withMethod("GET")
-                .withPath("/computeMetadata/v1/instance/service-accounts/default/token")
-                .withHeader("Host", METADATA_GOOGLE_INTERNAL)
-                .withHeader("Metadata-Flavor", "Google"))
         .respond(
             response()
                 .withStatusCode(200)
@@ -138,7 +123,7 @@ public class GcpAuthExtensionSmokeTest {
   public static void teardown() {
     // Stop the backend server
     stopQuietly(backendServer);
-    stopQuietly(mockGcpMetadataServer);
+    stopQuietly(mockGcpOAuth2Server);
   }
 
   @Test
@@ -146,7 +131,6 @@ public class GcpAuthExtensionSmokeTest {
     ResponseEntity<?> a =
         template.getForEntity(
             URI.create("http://localhost:" + testApplicationPort + "/ping"), String.class);
-    System.out.println("resp is " + a.toString());
 
     await()
         .atMost(10, TimeUnit.SECONDS)
